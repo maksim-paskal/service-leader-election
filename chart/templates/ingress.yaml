@@ -1,0 +1,19 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: service-leader-election
+spec:
+  tls:
+  - hosts:
+    - service-leader-election.dev.alldigitalads.com
+  rules:
+  - host: "service-leader-election.dev.alldigitalads.com"
+    http:
+      paths:
+      - path: /debug
+        pathType: Prefix
+        backend:
+          service:
+            name: service-leader-election
+            port:
+              number: 28086

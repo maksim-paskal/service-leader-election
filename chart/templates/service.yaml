@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: service-leader-election
+spec:
+  selector:
+    app: service-leader-election
+  ports:
+  - protocol: TCP
+    port: 28086
