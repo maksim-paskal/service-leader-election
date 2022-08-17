@@ -8,6 +8,9 @@ kind: Role
 metadata:
   name: service-leader-election-role
 rules:
+- apiGroups: [""]
+  resources: ["pods","services"]
+  verbs: ["get", "patch"]
 - apiGroups: ["coordination.k8s.io"]
   resources: ["leases"]
   verbs: ["*"]

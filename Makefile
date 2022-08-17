@@ -20,6 +20,7 @@ run:
 	go run -race ./cmd/main.go -kubeconfig=$(KUBECONFIG)
 
 deploy:
+	kubectl -n service-leader-election scale deploy service-leader-election --replicas=0 || true
 	helm upgrade service-leader-election ./chart \
 	--install \
 	--create-namespace \

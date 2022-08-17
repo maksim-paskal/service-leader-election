@@ -23,13 +23,8 @@ spec:
         imagePullPolicy: {{ .Values.imagePullPolicy }}
         resources:
           limits:
-            cpu: 100m
-            memory: 200Mi
-        readinessProbe:
-          httpGet:
-            path: /ready
-            port: 28086
-          periodSeconds: 5
+            cpu: 50m
+            memory: 100Mi
         livenessProbe:
           httpGet:
             path: /healthz
