@@ -10,4 +10,4 @@ RUN apk upgrade \
 
 USER 31101
 
-CMD /app/service-leader-election
+ENTRYPOINT [ "/app/service-leader-election" ]
