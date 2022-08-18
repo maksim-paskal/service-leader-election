@@ -5,9 +5,9 @@ metadata:
 spec:
   tls:
   - hosts:
-    - service-leader-election.dev.alldigitalads.com
+    - {{ .Values.ingress.host }}
   rules:
-  - host: "service-leader-election.dev.alldigitalads.com"
+  - host: {{ .Values.ingress.host }}
     http:
       paths:
       - path: /debug
