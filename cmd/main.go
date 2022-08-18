@@ -1,18 +1,29 @@
+/*
+Copyright paskal.maksim@gmail.com
+Licensed under the Apache License, Version 2.0 (the "License")
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
 package main
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
-	"os"
 	"time"
 
+	"github.com/maksim-paskal/service-leader-election/pkg/api"
 	"github.com/maksim-paskal/service-leader-election/pkg/client"
+	"github.com/maksim-paskal/service-leader-election/pkg/config"
 	"github.com/maksim-paskal/service-leader-election/pkg/web"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 )
@@ -23,147 +34,73 @@ const (
 	defaultRetryPeriod   = 2 * time.Second
 )
 
-var (
-	leaseName       = flag.String("lease-name", "service-leader-election", "name of lease to be created")
-	canPatchService = flag.Bool("patch-service", true, "patch service with pod labels")
-	serviceName     = flag.String("service-name", "service-leader-election", "name of service to be patch")
-	serviceKey      = flag.String("service-key", "service-leader-election", "key of service to be patch")
-	podname         = flag.String("podname", os.Getenv("POD_NAME"), "name of the pod")
-	namespace       = flag.String("namespace", os.Getenv("POD_NAMESPACE"), "namespace of the pod")
-)
-
 var errNoPodNamespaceOrPodName = errors.New("no pod namespace or pod name")
 
 func main() {
+	ctx := context.Background()
+
+	// parse cli flags
 	flag.Parse()
 
+	// log file name
 	log.SetReportCaller(true)
+
+	// check if pod namespace and pod name are set
+	if len(*config.Namespace) == 0 || len(*config.Podname) == 0 {
+		log.Fatal(errNoPodNamespaceOrPodName)
+	}
 
 	// loads the kubeconfig file
 	if err := client.Init(); err != nil {
 		log.WithError(err).Fatal("failed to init client")
 	}
 
+	// patch pod with label
+	if err := api.PatchPodLabels(ctx); err != nil {
+		log.WithError(err).Fatal("failed to patch pod with labels")
+	}
+
+	// wait for pod readiness
+	if err := waitForPodReady(ctx); err != nil {
+		log.WithError(err).Fatal("failed to wait for pod ready")
+	}
+
 	// run web server for rediness and liveliness probes
 	go web.StartServer()
 
 	// run leader election
-	RunLeaderElection(context.Background())
+	runLeaderElection(ctx)
 }
 
-func patchService(ctx context.Context) error {
-	if !*canPatchService {
+func waitForPodReady(ctx context.Context) error {
+	if !*config.CheckForReady {
 		return nil
 	}
 
-	service, err := client.Clientset.CoreV1().Services(*namespace).Get(ctx, *serviceName, metav1.GetOptions{})
-	if err != nil {
-		return errors.Wrap(err, "can not get service")
+	for {
+		ready, container, err := api.CheckContainerIsReady(ctx)
+		if err != nil {
+			return errors.Wrap(err, "failed to check container readiness")
+		}
+
+		if ready {
+			return nil
+		}
+
+		log.Infof("wait for container %s will be ready", container)
+		time.Sleep(*config.CheckForReadyInterval)
 	}
-
-	type metadataStringValue struct {
-		Selector map[string]string `json:"selector"`
-	}
-
-	type patchStringValue struct {
-		Spec metadataStringValue `json:"spec"`
-	}
-
-	payload := patchStringValue{
-		Spec: metadataStringValue{
-			Selector: service.Spec.Selector,
-		},
-	}
-
-	if service.Spec.Selector == nil {
-		service.Spec.Selector = map[string]string{}
-	}
-
-	service.Spec.Selector[*serviceKey] = *podname
-
-	payloadBytes, err := json.Marshal(payload)
-	if err != nil {
-		return errors.Wrap(err, "error marshaling payload")
-	}
-
-	_, err = client.Clientset.CoreV1().Services(*namespace).Patch(
-		ctx,
-		*serviceName,
-		types.StrategicMergePatchType,
-		payloadBytes,
-		metav1.PatchOptions{},
-	)
-	if err != nil {
-		return errors.Wrap(err, "error patching service")
-	}
-
-	return nil
 }
 
-func patchPodLabels(ctx context.Context) error {
-	pod, err := client.Clientset.CoreV1().Pods(*namespace).Get(ctx, *podname, metav1.GetOptions{})
-	if err != nil {
-		return errors.Wrap(err, "can not get pod")
-	}
-
-	type metadataStringValue struct {
-		Annotations map[string]string `json:"annotations"`
-		Labels      map[string]string `json:"labels"`
-	}
-
-	type patchStringValue struct {
-		Metadata metadataStringValue `json:"metadata"`
-	}
-
-	payload := patchStringValue{
-		Metadata: metadataStringValue{
-			Annotations: pod.Annotations,
-			Labels:      pod.Labels,
-		},
-	}
-
-	if pod.Labels == nil {
-		pod.Labels = make(map[string]string)
-	}
-
-	pod.Labels[*serviceKey] = *podname
-
-	payloadBytes, err := json.Marshal(payload)
-	if err != nil {
-		return errors.Wrap(err, "error marshaling payload")
-	}
-
-	_, err = client.Clientset.CoreV1().Pods(*namespace).Patch(
-		ctx,
-		*podname,
-		types.StrategicMergePatchType,
-		payloadBytes,
-		metav1.PatchOptions{},
-	)
-	if err != nil {
-		return errors.Wrap(err, "error patching pod")
-	}
-
-	return nil
-}
-
-func RunLeaderElection(ctx context.Context) {
-	if len(*namespace) == 0 || len(*podname) == 0 {
-		log.Fatal(errNoPodNamespaceOrPodName)
-	}
-
-	if err := patchPodLabels(ctx); err != nil {
-		log.WithError(err).Fatal("failed to patch pod with labels")
-	}
-
+func runLeaderElection(ctx context.Context) {
 	lock := &resourcelock.LeaseLock{
 		LeaseMeta: metav1.ObjectMeta{
-			Name:      *leaseName,
-			Namespace: *namespace,
+			Name:      *config.LeaseName,
+			Namespace: *config.Namespace,
 		},
 		Client: client.Clientset.CoordinationV1(),
 		LockConfig: resourcelock.ResourceLockConfig{
-			Identity: *podname,
+			Identity: *config.Podname,
 		},
 	}
 
@@ -176,7 +113,7 @@ func RunLeaderElection(ctx context.Context) {
 		Callbacks: leaderelection.LeaderCallbacks{
 			OnStartedLeading: func(ctx context.Context) {
 				log.Info("I am the leader")
-				if err := patchService(ctx); err != nil {
+				if err := api.PatchService(ctx); err != nil {
 					log.WithError(err).Fatal("failed to patch service")
 				}
 

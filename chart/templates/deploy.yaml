@@ -21,6 +21,16 @@ spec:
       - name: service-leader-election
         image: {{ .Values.image }}
         imagePullPolicy: {{ .Values.imagePullPolicy }}
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 30001
+          runAsGroup: 30001
+          privileged: false
+          readOnlyRootFilesystem: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
         resources:
           limits:
             cpu: 50m

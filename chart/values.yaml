@@ -1,2 +1,5 @@
 image: paskalmaksim/service-leader-election:dev
 imagePullPolicy: Always
+
+ingress:
+  host: service-leader-election.example.com

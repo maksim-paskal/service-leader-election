@@ -3,6 +3,7 @@ image=paskalmaksim/service-leader-election
 tag=dev
 
 test:
+	./scripts/validate-license.sh
 	go fmt ./cmd/... ./pkg/...
 	go vet ./cmd/... ./pkg/...
 	go mod tidy
