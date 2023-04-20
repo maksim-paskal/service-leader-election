@@ -1,6 +1,7 @@
 KUBECONFIG=$(HOME)/.kube/dev
 image=paskalmaksim/service-leader-election
 tag=dev
+platform=linux/amd64
 
 test:
 	./scripts/validate-license.sh
@@ -13,13 +14,16 @@ lint:
 	ct lint --charts ./chart
 
 build:
-	go run github.com/goreleaser/goreleaser@latest build --rm-dist --snapshot --skip-validate
-	mv dist/service-leader-election_linux_amd64_v1/service-leader-election ./service-leader-election
-	docker buildx build --pull --push . -t $(image):$(tag)
+	go run github.com/goreleaser/goreleaser@latest build --clean --snapshot --skip-validate
+	mv dist/service-leader-election_linux_amd64_v1/service-leader-election ./service-leader-election-amd64
+	mv dist/service-leader-election_linux_arm64/service-leader-election ./service-leader-election-arm64
+	docker buildx build --platform $(platform) --pull --push . -t $(image):$(tag)
 
 run:
 	go run -race ./cmd/main.go -kubeconfig=$(KUBECONFIG)
 
+docker-publish:
+	make build platform=linux/amd64,linux/arm64
 deploy:
 	kubectl -n service-leader-election scale deploy service-leader-election --replicas=0 || true
 	helm upgrade service-leader-election ./chart \

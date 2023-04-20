@@ -1,6 +1,7 @@
 FROM alpine:latest
+ARG TARGETARCH
 
-COPY ./service-leader-election /app/service-leader-election
+COPY ./service-leader-election-${TARGETARCH} /app/service-leader-election
 
 WORKDIR /app
 

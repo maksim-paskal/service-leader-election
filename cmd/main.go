@@ -15,6 +15,9 @@ package main
 import (
 	"context"
 	"flag"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/maksim-paskal/service-leader-election/pkg/api"
@@ -37,10 +40,25 @@ const (
 var errNoPodNamespaceOrPodName = errors.New("no pod namespace or pod name")
 
 func main() {
-	ctx := context.Background()
-
 	// parse cli flags
 	flag.Parse()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+
+	// listen for termination
+	go func() {
+		<-sigs
+		cancel()
+	}()
+
+	log.RegisterExitHandler(func() {
+		cancel()
+		time.Sleep(*config.GracefullShutdownTimeout)
+	})
 
 	// log file name
 	log.SetReportCaller(true)
@@ -66,10 +84,14 @@ func main() {
 	}
 
 	// run web server for rediness and liveliness probes
-	go web.StartServer()
+	go web.StartServer(ctx)
 
 	// run leader election
 	runLeaderElection(ctx)
+
+	<-ctx.Done()
+
+	time.Sleep(*config.GracefullShutdownTimeout)
 }
 
 func waitForPodReady(ctx context.Context) error {
@@ -104,7 +126,7 @@ func runLeaderElection(ctx context.Context) {
 		},
 	}
 
-	leaderelection.RunOrDie(ctx, leaderelection.LeaderElectionConfig{
+	go leaderelection.RunOrDie(ctx, leaderelection.LeaderElectionConfig{
 		Lock:            lock,
 		ReleaseOnCancel: true,
 		LeaseDuration:   defaultLeaseDuration,
