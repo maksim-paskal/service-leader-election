@@ -13,9 +13,11 @@ limitations under the License.
 package web
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/maksim-paskal/service-leader-election/pkg/api"
 	"github.com/maksim-paskal/service-leader-election/pkg/config"
@@ -25,10 +27,27 @@ import (
 
 var IsMaster atomic.Bool
 
-func StartServer() {
-	log.Info(fmt.Sprintf("Starting on port %d...", *config.Port))
+const httpReadHeaderTimeout = 5 * time.Second
 
-	err := http.ListenAndServe(fmt.Sprintf(":%d", *config.Port), GetHandler())
+func StartServer(ctx context.Context) {
+	log.Infof("Starting on port %d...", *config.Port)
+
+	httpServer := &http.Server{
+		Addr:              fmt.Sprintf(":%d", *config.Port),
+		Handler:           http.TimeoutHandler(GetHandler(), httpReadHeaderTimeout, "timeout"),
+		ReadHeaderTimeout: httpReadHeaderTimeout,
+	}
+
+	go func() {
+		<-ctx.Done()
+
+		ctx, cancel := context.WithTimeout(context.Background(), *config.GracefullShutdownTimeout)
+		defer cancel()
+
+		_ = httpServer.Shutdown(ctx)
+	}()
+
+	err := httpServer.ListenAndServe()
 	if err != nil {
 		log.WithError(err).Fatal()
 	}
@@ -44,7 +63,7 @@ func GetHandler() *http.ServeMux {
 	return mux
 }
 
-func handlerReady(w http.ResponseWriter, r *http.Request) {
+func handlerReady(w http.ResponseWriter, _ *http.Request) {
 	if IsMaster.Load() {
 		_, _ = w.Write([]byte("is master"))
 	} else {
@@ -73,6 +92,6 @@ func handlerHealthz(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte("live"))
 }
 
-func handlerDebug(w http.ResponseWriter, r *http.Request) {
+func handlerDebug(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write([]byte(os.Getenv("HOSTNAME")))
 }
