@@ -24,7 +24,7 @@ const (
 )
 
 var (
-	GracefullShutdownTimeout = flag.Duration("graceful-shutdown-time", defaultGracefullShutdownTimeout, "graceful shutdown time")
+	GracefullShutdownTimeout = flag.Duration("graceful-shutdown-time", defaultGracefullShutdownTimeout, "graceful shutdown time") //nolint:lll
 	LeaseName                = flag.String("lease-name", "service-leader-election", "name of lease to be created")
 	CanPatchService          = flag.Bool("patch-service", true, "patch service with pod labels")
 	ServiceName              = flag.String("service-name", "service-leader-election", "name of service to be patch")

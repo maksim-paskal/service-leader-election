@@ -44,7 +44,7 @@ func StartServer(ctx context.Context) {
 		ctx, cancel := context.WithTimeout(context.Background(), *config.GracefullShutdownTimeout)
 		defer cancel()
 
-		_ = httpServer.Shutdown(ctx)
+		_ = httpServer.Shutdown(ctx) //nolint:contextcheck
 	}()
 
 	err := httpServer.ListenAndServe()

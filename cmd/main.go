@@ -65,7 +65,7 @@ func main() {
 
 	// check if pod namespace and pod name are set
 	if len(*config.Namespace) == 0 || len(*config.Podname) == 0 {
-		log.Fatal(errNoPodNamespaceOrPodName)
+		log.WithError(errNoPodNamespaceOrPodName).Fatal()
 	}
 
 	// loads the kubeconfig file
